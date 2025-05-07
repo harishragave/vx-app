@@ -4,6 +4,10 @@ import { ArrowLeft, Clock, Pencil, Play, Pause, Square, Coffee } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { useToast } from "@/components/ui/use-toast";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+
+dayjs.extend(relativeTime);
 
 type SubTask = {
   id: string;
@@ -38,14 +42,30 @@ export function TaskDetails({ project, task, subtask, onBack }: TaskDetailsProps
   const [todayTime, setTodayTime] = useState({ hours: 0, minutes: 0 }); 
   const [keyboardCount, setKeyboardCount] = useState(0);
   const [mouseCount, setMouseCount] = useState(0);
-  const [lastScreenshot, setLastScreenshot] = useState<{
-    time: Date | null;
-    url: string | null;
-  }>({
-    time: null,
-    url: null
-  });
+  const [screenshotUrl, setScreenshotUrl] = useState<string>("");
+  const [lastScreenshotTime, setLastScreenshotTime] = useState<Date | null>(null);
   const { toast } = useToast();
+
+  // Effect to fetch latest screenshot
+  useEffect(() => {
+    const fetchScreenshot = () => {
+      fetch("http://localhost:3030/latest-screenshot")
+        .then((res) => res.json())
+        .then((data) => {
+          setScreenshotUrl(`http://localhost:3030/screenshots/${data.filename}`);
+          setLastScreenshotTime(new Date(data.timestamp));
+        })
+        .catch(console.error);
+    };
+
+    // Initial fetch
+    fetchScreenshot();
+
+    // Set up interval for auto-refresh (every 10 seconds)
+    const interval = setInterval(fetchScreenshot, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Effect to simulate tracking with timer
   useEffect(() => {
@@ -92,19 +112,6 @@ export function TaskDetails({ project, task, subtask, onBack }: TaskDetailsProps
         }
         if (Math.random() > 0.5) {
           setMouseCount(prev => prev + Math.floor(Math.random() * 5));
-        }
-        
-        // Simulate screenshot capture every 10 minutes (simulated as 60 seconds for the demo)
-        if (sessionTime.seconds % 60 === 0 && sessionTime.seconds > 0) {
-          setLastScreenshot({
-            time: new Date(),
-            url: "/lovable-uploads/1c1e1076-7419-4f24-8a59-9dc12654b420.png"
-          });
-          
-          toast({
-            title: "Screenshot captured",
-            description: "A new screenshot has been saved locally.",
-          });
         }
       }, 1000); // Real-time seconds
     }
@@ -163,12 +170,7 @@ export function TaskDetails({ project, task, subtask, onBack }: TaskDetailsProps
     });
   };
   
-  const formatTimeAgo = (date: Date) => {
-    const minutes = Math.floor((Date.now() - date.getTime()) / (1000 * 60));
-    if (minutes < 60) return `${minutes} mins ago`;
-    const hours = Math.floor(minutes / 60);
-    return `${hours} hr${hours > 1 ? 's' : ''} ${minutes % 60} mins ago`;
-  };
+
 
   const formatSessionTime = () => {
     if (sessionTime.hours > 0) {
@@ -278,22 +280,22 @@ export function TaskDetails({ project, task, subtask, onBack }: TaskDetailsProps
       
       <div className="p-4 flex-1 overflow-auto">
         <div className="flex items-center justify-between mb-2">
-          <div className="font-medium">Latest Screen Capture</div>
+          <div className="font-medium">Latest Screenshot</div>
           <div className="text-sm text-muted-foreground">
-            {lastScreenshot.time ? formatTimeAgo(lastScreenshot.time) : 'No screenshots yet'}
+            {lastScreenshotTime ? dayjs(lastScreenshotTime).fromNow() : 'No screenshots yet'}
           </div>
         </div>
         
-        <div className="aspect-video w-full rounded-md overflow-hidden bg-muted">
-          {lastScreenshot.url ? (
+        <div className="w-full rounded-lg border overflow-hidden">
+          {screenshotUrl ? (
             <img 
-              src={lastScreenshot.url} 
-              alt="Screenshot" 
-              className="w-full h-full object-cover"
+              src={screenshotUrl} 
+              alt="Latest Screenshot"
+              className="w-full h-auto"
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              No screenshots taken yet
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              No screenshots available
             </div>
           )}
         </div>

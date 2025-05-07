@@ -3,14 +3,18 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import isDev from 'electron-is-dev';
 import { fileURLToPath } from 'url';
+import screenshot from 'screenshot-desktop';
+import axios from 'axios';
+import fs from 'fs';
+import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 350,
+    height: 650,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -18,7 +22,7 @@ function createWindow() {
     },
   });
 
-  const devServerURL = 'http://localhost:8080';
+  const devServerURL = 'http://localhost:3000';
   const entryPath = path.join(__dirname, '../dist/index.html');
   
   if (isDev) {
@@ -37,7 +41,53 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+function startScreenshotLoop() {
+  const screenshotsFolder = path.join(os.homedir(), 'Desktop', 'BugAppScreenshots');
+
+  if (!fs.existsSync(screenshotsFolder)) {
+    fs.mkdirSync(screenshotsFolder);
+  }
+
+  const takeScreenshot = async () => {
+    const filename = `screenshot_${Date.now()}.png`;
+    const filepath = path.join(screenshotsFolder, filename);
+
+    try {
+      const img = await screenshot({ format: 'png' });
+
+      // Save locally
+      fs.writeFileSync(filepath, img);
+
+      // Send to local server as base64
+      const base64Image = `data:image/png;base64,${img.toString('base64')}`;
+
+      await axios.post('http://localhost:3030/save-screenshot', {
+        base64Image,
+        filename,
+      });
+
+      console.log('Screenshot captured and saved:', filename);
+    } catch (err) {
+      console.error('Screenshot failed:', err);
+    }
+  };
+
+  const scheduleNext = () => {
+    const randomDelay = Math.floor(Math.random() * 10 * 60 * 1000); // up to 10 minutes
+    console.log(`Next screenshot in ${Math.floor(randomDelay / 1000)} seconds`);
+    setTimeout(async () => {
+      await takeScreenshot();
+      setTimeout(scheduleNext, 10 * 60 * 1000); // wait full 10 minutes before scheduling next
+    }, randomDelay);
+  };
+
+  scheduleNext();
+}
+
+app.whenReady().then(() => {
+  createWindow();
+  startScreenshotLoop();
+});
 
 // IPC handlers
 ipcMain.on('task:start', () => {
